@@ -3,11 +3,11 @@
 <head>
     <title>Feature Story Misalignment</title>
     <!--  (c) 2015 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Fri Dec 11 2015 09:24:12 GMT-0800 (PST) -->
+    <!--  Build Date: Fri Dec 11 2015 11:12:20 GMT-0800 (PST) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Fri Dec 11 2015 09:24:12 GMT-0800 (PST)";
-        var CHECKSUM = 27953242601;
+        var APP_BUILD_DATE = "Fri Dec 11 2015 11:12:20 GMT-0800 (PST)";
+        var CHECKSUM = 28081955944;
     </script>
     
     <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
@@ -941,7 +941,8 @@ Ext.define("TSFeatureStoryMisalignment", {
         var config = {
             model: 'HierarchicalRequirement',
             filters: [
-                {property:'Feature',operator: '!=', value: null}
+                {property:'Feature',operator: '!=', value: null},
+                {property:'Feature.State.Name',operator: '!=', value: 'Done'}
             ],
             fetch: ['ObjectID','FormattedID','Name','Feature',this.alignmentField]
         }

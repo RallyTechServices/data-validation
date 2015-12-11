@@ -67,9 +67,10 @@ Ext.define("TSFeatureStoryMisalignment", {
         var config = {
             model: 'HierarchicalRequirement',
             filters: [
-                {property:'Feature',operator: '!=', value: null}
+                {property:'Feature',operator: '!=', value: null},
+                {property:'Feature.State.Name',operator: '!=', value: 'Done'}
             ],
-            fetch: ['ObjectID','FormattedID','Name','Feature',this.alignmentField]
+            fetch: ['ObjectID','FormattedID','Name','Feature','Parent',this.alignmentField]
         }
         return this._loadWsapiRecords(config);
     },
