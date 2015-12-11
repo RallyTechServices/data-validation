@@ -1,19 +1,39 @@
 Ext.define("ts-data-validation", {
-    extend: 'Rally.app.App',
+    extend: 'Rally.app.TimeboxScopedApp',
+    scopeType: 'release',
     componentCls: 'app',
     logger: new Rally.technicalservices.Logger(),
 
+    config: {
+        defaultSettings: {
+            validCDS: [],
+            excludeProjects: []
+        }
+    },
     /**
      * Configurations
      */
     allReleasesText: 'All Releases',
     portfolioItemFeature: 'PortfolioItem/Feature',
-    featureFetchFields: ['FormattedID','Name','Project','Release','c_FeatureDeploymentType','c_FeatureTargetSprint','c_CodeDeploymentSchedule','State','AcceptedLeafStoryCount','LeafStoryCount'],
-    storyFetchFields: ['FormattedID','Name','Project','c_CodeDeploymentSchedule','Iteration','Release','ScheduleState','Feature','Owner'],
+    featureFetchFields: ['PlannedStartDate','PlannedEndDate','FormattedID','Name','Project','Release','c_FeatureDeploymentType','c_FeatureTargetSprint','c_CodeDeploymentSchedule','State','AcceptedLeafStoryCount','LeafStoryCount','DisplayColor'],
+    storyFetchFields: ['FormattedID','Name','Project','c_CodeDeploymentSchedule','Iteration','Release','ScheduleState','Feature','Owner','Parent','c_BlockerCategory','c_BlockerOwnerFirstLast','c_BlockerState','Blocked','c_DoDStoryType'],
     iterationFetchFields: ['Name','StartDate','EndDate','State','ObjectID'],
+    historicalFeatureFetchFields: ['FormattedID','ObjectID','Project','c_FeatureTargetSprint','_PreviousValues.c_FeatureTargetSprint','Release'],
 
     featureRequiredFields: ['Release','c_FeatureTargetSprint','c_FeatureDeploymentType','c_CodeDeploymentSchedule','State'],
     storyRequiredFields: ['Release','c_CodeDeploymentSchedule'],
+    /**
+     * Also in FeatureRisk metrics app
+     */
+    displayColorClassificationMapping: {
+        '#107c1e': 'On Track',
+        '#df1a7b': 'High Risk',
+        '#fce205': 'Moderate Risk',
+        '#f9a814': 'High Risk',
+        '#ee6c19': 'High Risk',
+        '#848689': 'Not Started',
+        '#105cab': 'Completed'
+    },
 
     features: [],
     stories: [],
@@ -27,11 +47,13 @@ Ext.define("ts-data-validation", {
         '#f15c80', '#e4d354', '#2b908f', '#f45b5b', '#91e8e1','#1aadce',
         '#4572A7', '#AA4643', '#89A54E', '#80699B', '#3D96AE',
         '#DB843D', '#92A8CD', '#A47D7C', '#B5CA92'],
-    
-    launch: function() {
-        this._addReleaseSelector();
+
+    onTimeboxScopeChange: function(scope) {
+    //    this._addReleaseSelector();
         this._addTargetSprintSelector();
+        this.gatherData();
     },
+
     getFeatureRequiredFields: function(){
         return this.featureRequiredFields;
     },
@@ -39,7 +61,7 @@ Ext.define("ts-data-validation", {
         return this.storyRequiredFields;
     },
     getIterationFilters: function(){
-        var release = this.getSelectedReleaseRecord();
+        var release = this.getContext().getTimeboxScope().getRecord();
 
         if (release == null || release.get('Name') == this.allReleasesText){
             return [];
@@ -59,7 +81,7 @@ Ext.define("ts-data-validation", {
 
     getReleaseFilters: function(){
 
-        var release = this.getSelectedReleaseRecord();
+        var release = this.getContext().getTimeboxScope().getRecord();
 
         return [{
             property: 'Release.Name',
@@ -72,7 +94,17 @@ Ext.define("ts-data-validation", {
             value: release.get('ReleaseDate')
         }];
     },
-
+    //getHistoricalFeatureFindObj: function(){
+    //    return {
+    //        _TypeHierarchy: this.portfolioItemFeature,
+    //        "_PreviousValues.c_FeatureTargetSprint": {$exists: true},
+    //        _ValidFrom: {$gte: this.getContext().getTimeboxScope().getRecord().get('ReleaseStartDate')},
+    //        _ProjectHierarchy: this.getContext().getProject().ObjectID
+    //    };
+    //},
+    //getHistoricalFeatureFetchFields: function(){
+    //    return this.historicalFeatureFetchFields;
+    //},
     gatherData: function(){
         this.logger.log('gatherData');
         this.data_collected = false;
@@ -81,6 +113,7 @@ Ext.define("ts-data-validation", {
         this.getBody().removeAll();
         
         var promises = [
+           // this._fetchHistoricalData(this.getHistoricalFeatureFetchFields(), this.getHistoricalFeatureFindObj()),
             this._fetchData(this.portfolioItemFeature, this.featureFetchFields, this.getReleaseFilters()),
             this._fetchData('HierarchicalRequirement', this.storyFetchFields, this.getReleaseFilters()),
             this._fetchData('Iteration', this.iterationFetchFields, this.getIterationFilters())
@@ -95,6 +128,7 @@ Ext.define("ts-data-validation", {
                 this.features = this._filterOutExcludedProjects(results[0]);
                 this.stories = this._filterOutExcludedProjects(results[1]);
                 this.iterations = results[2];
+                //this.historicalFeatureSnapshots =results[0];
                 this.data_collected = true;
                 
                 this.analyzeData();
@@ -118,7 +152,11 @@ Ext.define("ts-data-validation", {
         var featureRules = Ext.create('Rally.technicalservices.FeatureValidationRules',{
             stories: this.stories,
             iterations: this.iterations,
-            targetSprint: this.getSelectedTargetSprint()
+            targetSprint: this.getSelectedTargetSprint(),
+            displayColorClassificationMapping: this.displayColorClassificationMapping,
+            //historicalFeatureSnapshots: this.historicalFeatureSnapshots,
+            currentRelease: this.getContext().getTimeboxScope().getRecord().get('Name'),
+            validCDS: this.getSetting('validCDS')
         });
         
         var featureValidator = Ext.create('Rally.technicalservices.Validator',{
@@ -126,7 +164,9 @@ Ext.define("ts-data-validation", {
                 records: this.features
             });
 
-        var storyRules = Ext.create('Rally.technicalservices.UserStoryValidationRules',{});
+        var storyRules = Ext.create('Rally.technicalservices.UserStoryValidationRules',{
+            iterations: this.iterations
+        });
         var storyValidator = Ext.create('Rally.technicalservices.Validator',{
                 validationRuleObj: storyRules,
                 records: this.stories
@@ -284,7 +324,7 @@ Ext.define("ts-data-validation", {
         this.logger.log("Series:", series);
         var categories = Ext.Array.map(projects, function(project) { return _.last(project.split('>')); });
         
-        var selectedRelease = this.getSelectedReleaseRecord();
+        var selectedRelease = this.getContext().getTimeboxScope().getRecord();
         
         var subtitle_text = (selectedRelease ? '<b>' + selectedRelease.get('Name')  + '</b>': 'All Releases');
 
@@ -305,7 +345,7 @@ Ext.define("ts-data-validation", {
                     type: 'bar'
                 },
                 title: {
-                    text: 'Work Item Field Issues'
+                    text: null
                 },
                /* subtitle: {
                     text: subtitle_text
@@ -386,6 +426,29 @@ Ext.define("ts-data-validation", {
         }
         return issues;
     },
+    _fetchHistoricalData: function(fetchFields, find){
+        var deferred = Ext.create('Deft.Deferred'),
+            store = Ext.create('Rally.data.lookback.SnapshotStore',{
+                find: find,
+                fetch: fetchFields,
+                limit: 'Infinity',
+                hydrate: ['Project','Release'],
+                removeUnauthorizedSnapshots: true,
+                compress: true
+            });
+
+        store.load({
+            scope: this,
+            callback: function(records, operation, success){
+                if (success){
+                    deferred.resolve(records);
+                } else {
+                    deferred.reject(operation);
+                }
+            }
+        });
+        return deferred;
+    },
     _fetchData: function(modelType, fetchFields, filters){
 
         var deferred = Ext.create('Deft.Deferred'),
@@ -411,6 +474,9 @@ Ext.define("ts-data-validation", {
 
     _addTargetSprintSelector: function() {
         this.logger.log('_addTargetSprintSelector');
+        if (this.down('#cb-targetsprint')){
+            this.down('#cb-targetsprint').destroy();
+        }
         var cb = this.getHeader().add({
             xtype: 'rallyfieldvaluecombobox',
             model: Ext.identityFn('PortfolioItem/Feature'),
@@ -428,25 +494,29 @@ Ext.define("ts-data-validation", {
         cb.on('change', this.analyzeData,this);
     },
     
-    _addReleaseSelector: function(){
-        this.logger.log('_addReleaseSelector');
-        var cb = this.getHeader().add({
-            xtype: 'rallyreleasecombobox',
-            itemId: 'cb-release',
-            fieldLabel: 'Release',
-            labelAlign: 'right',
-            allowNoEntry: false,
-            width: '300'
-        });
-        cb.on('change', this.gatherData,this);
-    },
+    //_addReleaseSelector: function(){
+    //    this.logger.log('_addReleaseSelector');
+    //    if (this.down('#cb-release')){
+    //        this.down('#cb-release').destroy();
+    //    }
+    //
+    //    var cb = this.getHeader().add({
+    //        xtype: 'rallyreleasecombobox',
+    //        itemId: 'cb-release',
+    //        fieldLabel: 'Release',
+    //        labelAlign: 'right',
+    //        allowNoEntry: false,
+    //        width: '300'
+    //    });
+    //    cb.on('change', this.gatherData,this);
+    //},
 
-    getSelectedReleaseRecord: function(){
-        if (this.down('#cb-release')){
-            return this.down('#cb-release').getRecord();
-        }
-        return null;
-    },
+    //getSelectedReleaseRecord: function(){
+    //    if (this.down('#cb-release')){
+    //        return this.down('#cb-release').getRecord();
+    //    }
+    //    return null;
+    //},
 
     getSelectedTargetSprint: function(){
         if (this.down('#cb-targetsprint')){
@@ -486,14 +556,29 @@ Ext.define("ts-data-validation", {
     getSettingsFields: function () {
         var fields = [];
 
+
+        fields.push({
+            name: 'validCDS',
+            xtype: 'rallyfieldvaluecombobox',
+            model: this.portfolioItemFeature,
+            fieldLabel: 'Valid Code Deployment Schedules',
+            labelWidth: 300,
+            labelAlign: 'right',
+            width: 600,
+            field: 'c_CodeDeploymentSchedule',
+            multiSelect: true
+        });
+
         fields.push({
             name: 'excludeProjects',
             xtype: 'rallymultiobjectpicker',
+            labelWidth: 300,
+            labelAlign: 'right',
             modelType: Ext.identityFn('Project'),
             margin: '10px 0 150px 0',
             fieldLabel: 'Exclude Projects'
         });
-        
+
         
         return fields;
     },
@@ -506,6 +591,7 @@ Ext.define("ts-data-validation", {
     onSettingsUpdate: function (settings){
         this.logger.log('onSettingsUpdate',settings);
         Ext.apply(this, settings);
+
         this.launch();
     }
 });
