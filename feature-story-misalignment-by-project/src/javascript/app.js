@@ -131,13 +131,15 @@ Ext.define("TSFeatureStoryMisalignment", {
             data: rows
         });
         
+        var linkRenderer = this._renderLinks;
+        
         var columns = [
-            { dataIndex:'FormattedID', text: 'Story' },
+            { dataIndex:'FormattedID', text: 'Story', renderer: linkRenderer, _csvIgnoreRender: true },
             { dataIndex:'Name', text:'Name', flex: 1 },
             { dataIndex:'Project', text:'Project', renderer: function(v) {
                 return v.Name;
             }},
-            { dataIndex:'__FeatureID', text: 'Feature' },
+            { dataIndex:'Feature', text: 'Feature', renderer: linkRenderer, exportRenderer: function(v) { return v.FormattedID; }},
             { dataIndex:'__FeatureName', text: 'Feature Name', flex: 1 },
             { dataIndex:'__FeatureField', text: 'Feature Project' }
         ];
@@ -152,6 +154,22 @@ Ext.define("TSFeatureStoryMisalignment", {
         });
         
         this.down('#export_button').setDisabled(false);
+    },
+    
+    _renderLinks: function(value, meta, record) {
+        var item = record;
+        var text = value;
+        
+        if (! Ext.isString(value) ) {
+            item = value;
+            text = value.FormattedID;
+        }
+        
+        return Ext.String.format(
+            "<a target='_blank' href='{0}'>{1}</a>",
+            Rally.nav.Manager.getDetailUrl(item),
+            text
+        );
     },
     
     _export: function(){
