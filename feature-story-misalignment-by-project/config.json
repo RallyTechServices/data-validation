@@ -1,0 +1,7 @@
+{
+    "name": "Feature Story Misalignment",
+    "className": "TSFeatureStoryMisalignment",
+    "server": "https://us1.rallydev.com",
+    "sdk": "2.0",
+    "apiKey": "_PUT_APIKEY_HERE_"
+}
