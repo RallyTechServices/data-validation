@@ -1,6 +1,10 @@
 #Feature Story Misalignment
 
+An exportable grid showing stories that are in different projects than their associated features.  This ignores stories without features.
+
 ## Development Notes
+
+* Could be a performance issue down the road.  Need to determine a filtering approach.  (Because we have to ask for all the stories in scope and only then can we go through and make sure that they're misaligned.)
 
 ### First Load
 
