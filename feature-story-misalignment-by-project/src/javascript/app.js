@@ -11,11 +11,13 @@ Ext.define("TSFeatureStoryMisalignment", {
         {xtype:'container',itemId:'display_box', region: 'center', layout: 'fit'}
     ],
 
+    
     integrationHeaders : {
         name : "TSFeatureStoryMisalignment"
     },
     
     alignmentField: 'Project',
+    projects: [],
     
     launch: function() {
         this._addSelectors(this.down('#selector_box'));
@@ -47,9 +49,11 @@ Ext.define("TSFeatureStoryMisalignment", {
         
         var me = this;
         Deft.Chain.pipeline([
+            this._getProjects,
             this._getStories,
             this._findMisalignedStories,
-            this._setValuesEasierToDisplay
+            this._setValuesEasierToDisplay,
+            this._setProjectPaths
         ],this).then({
             scope: this,
             success: function(rows) {
@@ -73,6 +77,31 @@ Ext.define("TSFeatureStoryMisalignment", {
             fetch: ['ObjectID','FormattedID','Name','Feature','Parent',this.alignmentField]
         }
         return this._loadWsapiRecords(config);
+    },
+    
+    _getProjects: function() {
+        var deferred = Ext.create('Deft.Deferred');
+        
+        var config = {
+            model: 'Project',
+            filters: [
+                {property:'Children.State',operator: 'contains', value: 'Open'}
+            ],
+            fetch: ['ObjectID','Name','Parent'],
+            limit: 'Infinity'
+        }
+        
+        this._loadWsapiRecords(config).then({
+            scope: this,
+            success: function(projects) {
+                this.projects = projects;
+                deferred.resolve();
+            },
+            failure: function(msg) {
+                deferred.reject(msg);
+            }
+        });
+        return deferred.promise;
     },
     
     _findMisalignedStories: function(stories){
@@ -102,6 +131,64 @@ Ext.define("TSFeatureStoryMisalignment", {
         return rows;
     },
     
+    _setProjectPaths: function(rows) {
+        var parents_by_child_oid = this._arrangeProjectsByChild(rows);
+        Ext.Array.each(rows, function(row) {
+            var story_project = row.get('Project');
+            var feature_project = row.get('Feature').Project;
+            row.set('__StoryProjectPath', this._getProjectPath(story_project,parents_by_child_oid) );
+            row.set('__FeatureProjectPath', this._getProjectPath(feature_project,parents_by_child_oid) );
+        },this);
+        
+        return rows;
+    },
+    
+    _getProjectPath: function(project,parents_by_child_oid) {
+        var top = false;
+        var project_array = [];
+        
+        var candidate = project;
+        
+        while ( !top ) {
+            project_array.push(candidate.Name);
+            if (! Ext.isEmpty(parents_by_child_oid[candidate.ObjectID])) {
+                candidate = parents_by_child_oid[candidate.ObjectID];
+            } else {
+                top = true;
+            }
+        }
+        
+        
+        return project_array.reverse().join(' > ');
+    },
+    
+    _arrangeProjectsByChild: function(rows) {
+        var parents_by_child_oid = {};
+        this.setLoading("Constructing project paths...");
+        
+        Ext.Array.each(rows,function(row){
+            var story_project = row.get('Project');
+            var feature_project = row.get('Feature').Project;
+            
+            if ( !Ext.isEmpty(story_project.Parent) ) {
+                parents_by_child_oid[story_project.ObjectID] = story_project.Parent;
+            }
+            
+            if ( !Ext.isEmpty(feature_project.Parent) ) {
+                parents_by_child_oid[feature_project.ObjectID] = feature_project.Parent;
+            }
+        });
+        
+        Ext.Array.each(this.projects, function(project){
+            if ( !Ext.isEmpty(project.get('Parent') ) ) {
+                parents_by_child_oid[project.get('ObjectID')] = project.get('Parent');
+            }
+        });
+        
+        return parents_by_child_oid;
+    },
+    
+    
     _loadWsapiRecords: function(config){
         var deferred = Ext.create('Deft.Deferred');
         var me = this;
@@ -128,6 +215,8 @@ Ext.define("TSFeatureStoryMisalignment", {
     
     _displayGrid: function(rows){
         
+        console.log('rows:', rows);
+        
         var store = Ext.create('Rally.data.custom.Store',{
             data: rows
         });
@@ -137,12 +226,10 @@ Ext.define("TSFeatureStoryMisalignment", {
         var columns = [
             { dataIndex:'FormattedID', text: 'Story', renderer: linkRenderer, _csvIgnoreRender: true },
             { dataIndex:'Name', text:'Name', flex: 1 },
-            { dataIndex:'Project', text:'Project', renderer: function(v) {
-                return v.Name;
-            }},
+            { dataIndex:'__StoryProjectPath', text:'Project'},
             { dataIndex:'Feature', text: 'Feature', renderer: linkRenderer, exportRenderer: function(v) { return v.FormattedID; }},
             { dataIndex:'__FeatureName', text: 'Feature Name', flex: 1 },
-            { dataIndex:'__FeatureField', text: 'Feature Project' }
+            { dataIndex:'__FeatureProjectPath', text:'Feature Project'}
         ];
         
         this.down('#display_box').add({
